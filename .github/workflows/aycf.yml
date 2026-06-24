@@ -80,4 +80,5 @@ jobs:
           WIZZ_PASSWORD: ${{ secrets.WIZZ_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_YUVAL: ${{ secrets.TELEGRAM_CHAT_ID_YUVAL }}
         run: python check_aycf.py ${{ github.event.inputs.force_check == 'true' && '--no-window' || '' }}

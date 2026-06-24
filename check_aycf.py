@@ -170,6 +170,11 @@ def load_config(path: Path) -> dict:
     cfg["telegram"]["chat_id"] = str(
         os.environ.get("TELEGRAM_CHAT_ID") or cfg["telegram"].get("chat_id", "")
     )
+    # Optional second recipient (Yuval): notified in Hebrew when a route is
+    # marked booked. If unset, that notification is simply skipped.
+    cfg["telegram"]["chat_id_yuval"] = str(
+        os.environ.get("TELEGRAM_CHAT_ID_YUVAL") or cfg["telegram"].get("chat_id_yuval", "")
+    )
 
     missing = []
     if _placeholder(cfg["wizz"]["email"]):
@@ -218,10 +223,13 @@ def _telegram_call(cfg: dict, method: str, params: dict) -> dict | None:
         return None
 
 
-def send_telegram(cfg: dict, text: str, reply_markup: dict | None = None):
-    """Send a message. Returns the sent-message dict (with message_id) or None."""
+def send_telegram(cfg: dict, text: str, reply_markup: dict | None = None, chat_id=None):
+    """Send a message. Returns the sent-message dict (with message_id) or None.
+
+    chat_id defaults to the main recipient; pass one to message someone else.
+    """
     params = {
-        "chat_id": str(cfg["telegram"]["chat_id"]),
+        "chat_id": str(chat_id or cfg["telegram"]["chat_id"]),
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": "true",
@@ -288,6 +296,7 @@ def process_booked_callbacks(cfg: dict, state: dict) -> None:
             continue
         key = data.split(":", 1)[1]
         entry = state.setdefault(key, {})
+        was_booked = entry.get("booked", False)
         entry["booked"] = True
         entry["booked_at"] = datetime.now(timezone.utc).isoformat()
         answer_callback(cfg, cq["id"], "Got it — alerts stopped for this route. ✅")
@@ -297,7 +306,45 @@ def process_booked_callbacks(cfg: dict, state: dict) -> None:
         if chat and mid:
             edit_message_text(cfg, chat, mid, "✅ <b>Booked — alerts stopped for this route.</b>")
         log.info("Route %s marked booked via Telegram button.", key)
+        # Forward a Hebrew heads-up to Yuval (only on the first tap).
+        if not was_booked:
+            notify_yuval(cfg, key, entry)
     state["_telegram_offset"] = max_update_id + 1
+
+
+def notify_yuval(cfg: dict, key: str, entry: dict) -> None:
+    """Send Yuval an automatic Hebrew message that a flight was booked."""
+    yuval = cfg["telegram"].get("chat_id_yuval", "")
+    if not yuval:
+        log.info("No Yuval chat_id configured; skipping her notification.")
+        return
+    # Prefer details saved when the alert was sent; fall back to the route key
+    # (e.g. "BUD-TLV-2026-06-27") if state predates them.
+    origin = entry.get("origin")
+    dest = entry.get("destination")
+    display_date = entry.get("display_date")
+    if not (origin and dest and display_date):
+        parts = key.split("-")
+        if len(parts) >= 5:
+            origin, dest = parts[0], parts[1]
+            d = "-".join(parts[2:])
+            display_date = f"{d[8:10]}-{d[5:7]}-{d[:4]}"
+    flights = entry.get("flights") or []
+
+    msg = (
+        "✈️ <b>הודעה אוטומטית</b>\n"
+        "איתן הזמין טיסה! 🎉\n"
+        f"מסלול: {origin} → {dest}\n"
+        f"תאריך: {display_date}"
+    )
+    if flights:
+        lines = "\n".join(f"• {f}" for f in flights)
+        msg += f"\nשעות (המראה → נחיתה):\n{lines}"
+
+    if send_telegram(cfg, msg, chat_id=yuval):
+        log.info("Sent booking notification to Yuval for %s", key)
+    else:
+        log.error("Failed to send Yuval notification for %s", key)
 
 
 # --------------------------------------------------------------------------- #
@@ -689,6 +736,12 @@ def main() -> int:
                             entry["notified"] = True
                             entry["at"] = datetime.now(timezone.utc).isoformat()
                             entry["msg_id"] = sent.get("message_id")
+                            # Remember details so the "I've booked this" tap can
+                            # forward them to Yuval.
+                            entry["origin"] = route["origin"]
+                            entry["destination"] = route["destination"]
+                            entry["display_date"] = display_date
+                            entry["flights"] = flights
                         else:
                             log.error("Failed to send Telegram for %s", key)
                 else:
