@@ -1,20 +1,18 @@
 name: Wizz AYCF watch
 
+# Scheduling is driven externally by cron-job.org, which fires this workflow
+# every ~5 min via the GitHub API (workflow_dispatch). GitHub's own `schedule:`
+# cron was removed because it's unreliable for short intervals — it silently
+# drops runs at :00/:05/... under global load.
 on:
-  schedule:
-    # Every 5 minutes. GitHub may delay scheduled runs under load; actual
-    # cadence is ~5–15 min. The script itself exits in seconds for any route
-    # outside its 72h–3h booking window, so off-window runs are cheap.
-    - cron: "*/5 * * * *"
-  workflow_dispatch:      # manual "Run workflow" button in the Actions tab
+  workflow_dispatch:      # external cron-job.org trigger + manual "Run workflow" button
     inputs:
       force_check:
         description: "Check all routes even if none are in-window (full test run)"
         type: boolean
         default: false
 
-# If a run is still going when the next is scheduled, skip the new one rather
-# than pile up.
+# If a run is still going when the next fires, skip the new one rather than pile up.
 concurrency:
   group: aycf-watch
   cancel-in-progress: false
