@@ -399,7 +399,7 @@ def extract_flights(page) -> list:
         arr = _first_line(_first_text(row, ".CvoCollapsibleDirectFlightRow-arrival .CvoCollapsibleDirectFlightRow-hour"))
         code = _first_text(row, ".CvoCollapsibleDirectFlightRow-flightCode")
         price = _first_text(row, ".CvoCollapsibleDirectFlightRow-price")
-        parts = [p for p in (f"{dep}→{arr}" if dep or arr else "", code, price) if p]
+        parts = [p for p in (f"{dep}→{arr}" if dep or arr else "", code) if p]
         flights.append(" · ".join(parts) if parts else txt[:80])
     return flights
 
@@ -550,11 +550,13 @@ def main() -> int:
                         log.info("Already notified for %s; not sending again.", key)
                     else:
                         detail = ("\n" + "\n".join(f"• {f}" for f in flights)) if flights else ""
+                        d = route['date']  # YYYY-MM-DD
+                        display_date = f"{d[8:10]}-{d[5:7]}-{d[:4]}"
                         msg = (
                             f"✈️ <b>Wizz AYCF flight available!</b>\n"
-                            f"<b>{route['origin']} → {route['destination']}</b>  ({route['date']})\n"
-                            f"A SELECT button appeared — book it manually now:"
-                            f"{detail}\n{SEARCH_URL}"
+                            f"<b>{route['origin']} → {route['destination']}</b>  ({display_date})"
+                            f"{detail}\n"
+                            f'<a href="{SEARCH_URL}">Book it here now</a>'
                         )
                         if send_telegram(cfg, msg):
                             log.info("Telegram notification sent for %s", key)
