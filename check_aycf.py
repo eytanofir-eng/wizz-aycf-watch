@@ -558,8 +558,7 @@ def main() -> int:
                     cfg,
                     "🤖 <b>Wizz anti-bot system activated</b>\n"
                     "A CAPTCHA challenge appeared during login — "
-                    "unable to check flights right now.\n"
-                    "It should resolve on its own in a few hours.",
+                    "unable to check flights right now.",
                 )
                 return 2
             if login_status != "ok":
