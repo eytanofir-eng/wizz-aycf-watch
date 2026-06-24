@@ -6,7 +6,12 @@ on:
     # cadence is ~5–15 min. The script itself exits in seconds for any route
     # outside its 72h–3h booking window, so off-window runs are cheap.
     - cron: "*/5 * * * *"
-  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+  workflow_dispatch:      # manual "Run workflow" button in the Actions tab
+    inputs:
+      force_check:
+        description: "Check all routes even if none are in-window (full test run)"
+        type: boolean
+        default: false
 
 # If a run is still going when the next is scheduled, skip the new one rather
 # than pile up.
@@ -31,7 +36,10 @@ jobs:
       - name: Booking-window gate
         id: gate
         run: |
-          if python aycf_window.py; then
+          if [ "${{ github.event.inputs.force_check }}" = "true" ]; then
+            echo "Forced run — bypassing window gate."
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          elif python aycf_window.py; then
             echo "open=true" >> "$GITHUB_OUTPUT"
           else
             echo "open=false" >> "$GITHUB_OUTPUT"
@@ -72,4 +80,4 @@ jobs:
           WIZZ_PASSWORD: ${{ secrets.WIZZ_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python check_aycf.py
+        run: python check_aycf.py ${{ github.event.inputs.force_check == 'true' && '--no-window' || '' }}
