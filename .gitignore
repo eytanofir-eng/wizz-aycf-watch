@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+config.local.json
+
+# Runtime artifacts
+state.json
+debug/
+*.log
+
+# Python / Playwright
+__pycache__/
+*.pyc
+.venv/
+venv/

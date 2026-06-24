@@ -1,0 +1,20 @@
+{
+  "booking_window": {
+    "open_hours_before": 72,
+    "close_hours_before": 3
+  },
+  "routes": [
+    { "origin": "BUD", "destination": "TLV", "date": "2026-06-30", "tz": "Europe/Budapest" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-02", "tz": "Asia/Jerusalem" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-03", "tz": "Asia/Jerusalem" },
+    { "origin": "BUD", "destination": "TLV", "date": "2026-07-18", "tz": "Europe/Budapest" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-20", "tz": "Asia/Jerusalem" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-21", "tz": "Asia/Jerusalem" },
+    { "origin": "BUD", "destination": "TLV", "date": "2026-07-27", "tz": "Europe/Budapest" },
+    { "origin": "BUD", "destination": "TLV", "date": "2026-07-28", "tz": "Europe/Budapest" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-29", "tz": "Asia/Jerusalem" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-30", "tz": "Asia/Jerusalem" }
+  ],
+  "headless": true,
+  "notify_once": true
+}
