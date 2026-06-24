@@ -25,8 +25,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Fast pre-flight gate (stdlib only, no browser): is any route in its
+      # 72h-3h window right now? If not, the heavy steps below are skipped and
+      # the run finishes in seconds.
+      - name: Booking-window gate
+        id: gate
+        run: |
+          if python aycf_window.py; then
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "open=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Cache pip + the Playwright browser download across runs.
       - uses: actions/cache@v4
+        if: steps.gate.outputs.open == 'true'
         with:
           path: |
             ~/.cache/pip
@@ -34,6 +47,7 @@ jobs:
           key: aycf-deps-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
       - name: Install dependencies
+        if: steps.gate.outputs.open == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -43,6 +57,7 @@ jobs:
       # re-alert every 5 minutes while a flight stays available. The unique key
       # (run_id) always writes a fresh cache; restore-keys pulls the latest one.
       - name: Restore notify state
+        if: steps.gate.outputs.open == 'true'
         uses: actions/cache@v4
         with:
           path: state.json
@@ -51,6 +66,7 @@ jobs:
             aycf-state-
 
       - name: Run watcher
+        if: steps.gate.outputs.open == 'true'
         env:
           WIZZ_EMAIL: ${{ secrets.WIZZ_EMAIL }}
           WIZZ_PASSWORD: ${{ secrets.WIZZ_PASSWORD }}
