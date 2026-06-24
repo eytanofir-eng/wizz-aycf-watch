@@ -198,26 +198,106 @@ def load_config(path: Path) -> dict:
 # --------------------------------------------------------------------------- #
 # Telegram
 # --------------------------------------------------------------------------- #
-def send_telegram(cfg: dict, text: str) -> bool:
+def _telegram_call(cfg: dict, method: str, params: dict) -> dict | None:
+    """POST to a Telegram Bot API method. Returns the 'result' dict, or None on error."""
     token = cfg["telegram"]["bot_token"]
-    chat_id = str(cfg["telegram"]["chat_id"])
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode(
-        {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": "true"}
-    ).encode()
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    data = urllib.parse.urlencode(params).encode()
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20, context=_SSL_CTX) as resp:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=25, context=_SSL_CTX) as resp:
             body = json.loads(resp.read().decode())
             if not body.get("ok"):
-                log.error("Telegram API error: %s", body)
-                return False
-            return True
+                log.error("Telegram API error (%s): %s", method, body)
+                return None
+            return body.get("result")
     except urllib.error.HTTPError as e:
-        log.error("Telegram send failed: %s — %s", e, e.read().decode(errors="replace"))
-        return False
+        log.error("Telegram %s failed: %s — %s", method, e, e.read().decode(errors="replace"))
+        return None
     except urllib.error.URLError as e:
-        log.error("Telegram send failed: %s", e)
-        return False
+        log.error("Telegram %s failed: %s", method, e)
+        return None
+
+
+def send_telegram(cfg: dict, text: str, reply_markup: dict | None = None):
+    """Send a message. Returns the sent-message dict (with message_id) or None."""
+    params = {
+        "chat_id": str(cfg["telegram"]["chat_id"]),
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }
+    if reply_markup is not None:
+        params["reply_markup"] = json.dumps(reply_markup)
+    return _telegram_call(cfg, "sendMessage", params)
+
+
+def get_telegram_updates(cfg: dict, offset: int) -> list:
+    """Fetch pending updates (callback button taps) since offset. Returns a list."""
+    params = {"timeout": 0, "allowed_updates": json.dumps(["callback_query"])}
+    if offset:
+        params["offset"] = offset
+    result = _telegram_call(cfg, "getUpdates", params)
+    return result or []
+
+
+def answer_callback(cfg: dict, callback_query_id: str, text: str = "") -> None:
+    """Acknowledge a button tap so Telegram stops showing the loading spinner."""
+    params = {"callback_query_id": callback_query_id}
+    if text:
+        params["text"] = text
+    _telegram_call(cfg, "answerCallbackQuery", params)
+
+
+def edit_message_text(cfg: dict, chat_id, message_id, text: str) -> None:
+    """Replace a message's text (and drop its buttons) to confirm an action."""
+    _telegram_call(
+        cfg,
+        "editMessageText",
+        {
+            "chat_id": str(chat_id),
+            "message_id": str(message_id),
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        },
+    )
+
+
+def process_booked_callbacks(cfg: dict, state: dict) -> None:
+    """Apply any 'I've booked this' button taps queued since the last run.
+
+    The bot isn't always-on (it only wakes every ~5 min), so a tap is handled
+    on the next scheduled run: we poll getUpdates, flag the route as booked in
+    state so it stops being checked, acknowledge the tap, and edit the original
+    alert to confirm. The Telegram update offset is persisted in state so we
+    never reprocess an old tap.
+    """
+    offset = state.get("_telegram_offset", 0)
+    updates = get_telegram_updates(cfg, offset)
+    if not updates:
+        return
+    max_update_id = offset - 1
+    for upd in updates:
+        max_update_id = max(max_update_id, upd.get("update_id", max_update_id))
+        cq = upd.get("callback_query")
+        if not cq:
+            continue
+        data = cq.get("data", "")
+        if not data.startswith("booked:"):
+            answer_callback(cfg, cq["id"])
+            continue
+        key = data.split(":", 1)[1]
+        entry = state.setdefault(key, {})
+        entry["booked"] = True
+        entry["booked_at"] = datetime.now(timezone.utc).isoformat()
+        answer_callback(cfg, cq["id"], "Got it — alerts stopped for this route. ✅")
+        msg = cq.get("message") or {}
+        chat = (msg.get("chat") or {}).get("id")
+        mid = msg.get("message_id")
+        if chat and mid:
+            edit_message_text(cfg, chat, mid, "✅ <b>Booked — alerts stopped for this route.</b>")
+        log.info("Route %s marked booked via Telegram button.", key)
+    state["_telegram_offset"] = max_update_id + 1
 
 
 # --------------------------------------------------------------------------- #
@@ -531,10 +611,17 @@ def main() -> int:
     notify_once = cfg.get("notify_once", True)
     headless = cfg.get("headless", True)
 
+    # Apply any "I've booked this" button taps queued in Telegram since last run.
+    process_booked_callbacks(cfg, state)
+
     to_check = []
     for route in cfg["routes"]:
-        is_open, reason = in_window(route, cfg)
+        key = route_key(route)
         label = f"{route['origin']}->{route['destination']} {route['date']}"
+        if state.get(key, {}).get("booked"):
+            log.info("Route %s: skipping — already booked.", label)
+            continue
+        is_open, reason = in_window(route, cfg)
         if is_open or args.no_window:
             log.info("Route %s: WILL CHECK (%s)", label, reason)
             to_check.append(route)
@@ -542,7 +629,8 @@ def main() -> int:
             log.info("Route %s: skipping — %s", label, reason)
 
     if not to_check:
-        log.info("No routes in window. Nothing to do.")
+        log.info("No routes to check. Nothing to do.")
+        save_state(state_path, state)
         return 0
 
     with sync_playwright() as p:
@@ -589,14 +677,25 @@ def main() -> int:
                             f"{detail}\n"
                             f'<a href="{SEARCH_URL}">Book it here now</a>'
                         )
-                        if send_telegram(cfg, msg):
+                        reply_markup = {
+                            "inline_keyboard": [[
+                                {"text": "✅ I've booked this — stop alerts", "callback_data": f"booked:{key}"}
+                            ]]
+                        }
+                        sent = send_telegram(cfg, msg, reply_markup=reply_markup)
+                        if sent:
                             log.info("Telegram notification sent for %s", key)
-                            state[key] = {"notified": True, "at": datetime.now(timezone.utc).isoformat()}
+                            entry = state.setdefault(key, {})
+                            entry["notified"] = True
+                            entry["at"] = datetime.now(timezone.utc).isoformat()
+                            entry["msg_id"] = sent.get("message_id")
                         else:
                             log.error("Failed to send Telegram for %s", key)
                 else:
-                    if state.get(key, {}).get("notified"):
-                        state[key] = {"notified": False, "at": datetime.now(timezone.utc).isoformat()}
+                    entry = state.get(key)
+                    if entry and entry.get("notified"):
+                        entry["notified"] = False
+                        entry["at"] = datetime.now(timezone.utc).isoformat()
         finally:
             save_state(state_path, state)
             context.close()

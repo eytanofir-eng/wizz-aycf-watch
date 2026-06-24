@@ -42,6 +42,12 @@ One-time setup:
 Notify-once state is persisted between runs via the Actions cache, so you get one alert per
 route until it stops appearing — no every-5-minute spam.
 
+Each availability alert carries an **"✅ I've booked this — stop alerts"** button. Tapping it
+flags the route as booked in `state.json` so it's no longer checked (handy when a flight you
+already grabbed disappears and later reopens). Because the bot only wakes every ~5 min, the tap
+is applied on the next scheduled run, which then edits the message to confirm. To re-enable a
+route later, clear its `booked` flag from `state.json` (or just re-add it).
+
 ## Run locally
 
 Python 3.12 + Playwright (Node is not required):
