@@ -4,7 +4,7 @@
     "close_hours_before": 3
   },
   "routes": [
-    { "origin": "BUD", "destination": "TLV", "date": "2026-06-27", "tz": "Europe/Budapest" },
+    { "origin": "BUD", "destination": "TLV", "date": "2026-06-28", "tz": "Europe/Budapest" },
     { "origin": "BUD", "destination": "TLV", "date": "2026-06-30", "tz": "Europe/Budapest" },
     { "origin": "TLV", "destination": "BUD", "date": "2026-07-02", "tz": "Asia/Jerusalem" },
     { "origin": "TLV", "destination": "BUD", "date": "2026-07-03", "tz": "Asia/Jerusalem" },
