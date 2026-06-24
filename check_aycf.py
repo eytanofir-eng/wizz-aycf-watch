@@ -106,6 +106,20 @@ SELECTORS = {
         ".AvailabilityPage-noResultMessage",
         ".BookingAvailabilityView-noResults",
     ],
+    # Anti-bot / CAPTCHA challenges (image picker: "select curtains / chair").
+    "captcha": [
+        "iframe[src*='captcha']",
+        "iframe[src*='challenge']",
+        "iframe[src*='arkose']",
+        "iframe[src*='funcaptcha']",
+        "iframe[src*='arkoselabs']",
+        "div[class*='captcha' i]",
+        "div[class*='challenge' i]",
+        "div[id*='captcha' i]",
+        "#captcha",
+        ".g-recaptcha",
+        ".h-captcha",
+    ],
 }
 
 log = logging.getLogger("aycf")
@@ -278,7 +292,8 @@ def dismiss_modal(page):
             pass
 
 
-def login(page, cfg: dict, debug: bool) -> bool:
+def login(page, cfg: dict, debug: bool) -> str:
+    """Return 'ok', 'captcha', or 'failed'."""
     log.info("Opening %s", BASE_URL)
     page.goto(BASE_URL, wait_until="domcontentloaded", timeout=45000)
 
@@ -293,7 +308,7 @@ def login(page, cfg: dict, debug: bool) -> bool:
     # Already logged in (persisted session)?
     if "/private-page" in page.url:
         log.info("Already logged in")
-        return True
+        return "ok"
 
     opener = first_visible(page, SELECTORS["login_open_panel"], timeout=8000)
     if opener:
@@ -309,7 +324,7 @@ def login(page, cfg: dict, debug: bool) -> bool:
         log.error("Could not find the login form.")
         if debug:
             dump_debug(page, "login-form-missing")
-        return False
+        return "failed"
 
     email.fill(cfg["wizz"]["email"])
     pwd.fill(cfg["wizz"]["password"])
@@ -330,12 +345,18 @@ def login(page, cfg: dict, debug: bool) -> bool:
         log.info("Logged in")
         if debug:
             dump_debug(page, "logged-in")
-        return True
+        return "ok"
+
+    if any_count(page, SELECTORS["captcha"]) > 0:
+        log.warning("CAPTCHA / anti-bot challenge detected")
+        if debug:
+            dump_debug(page, "captcha")
+        return "captcha"
 
     log.error("Login did not complete; url=%s", page.url)
     if debug:
         dump_debug(page, "login-failed")
-    return False
+    return "failed"
 
 
 def select_autocomplete(page, input_selectors, option_selectors, code: str) -> bool:
@@ -530,7 +551,18 @@ def main() -> int:
         page = context.new_page()
 
         try:
-            if not login(page, cfg, args.debug):
+            login_status = login(page, cfg, args.debug)
+            if login_status == "captcha":
+                log.error("Aborting: anti-bot challenge.")
+                send_telegram(
+                    cfg,
+                    "🤖 <b>Wizz anti-bot system activated</b>\n"
+                    "A CAPTCHA challenge appeared during login — "
+                    "unable to check flights right now.\n"
+                    "It should resolve on its own in a few hours.",
+                )
+                return 2
+            if login_status != "ok":
                 log.error("Aborting: login failed.")
                 return 2
 
