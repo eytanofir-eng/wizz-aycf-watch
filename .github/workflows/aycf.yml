@@ -57,6 +57,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # Remove third-party apt sources pre-installed on the runner that we
+          # don't need. They intermittently 403 (e.g. azure-cli) and break
+          # Playwright's internal apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/{azure-cli,google-chrome,microsoft-prod}.list
           python -m playwright install --with-deps chromium
 
       # Restore notify-once state from the most recent previous run so we don't
