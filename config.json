@@ -9,6 +9,8 @@
     { "origin": "BUD", "destination": "TLV", "date": "2026-06-30", "tz": "Europe/Budapest" },
     { "origin": "TLV", "destination": "BUD", "date": "2026-07-02", "tz": "Asia/Jerusalem" },
     { "origin": "TLV", "destination": "BUD", "date": "2026-07-03", "tz": "Asia/Jerusalem" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-04", "tz": "Asia/Jerusalem" },
+    { "origin": "TLV", "destination": "BUD", "date": "2026-07-05", "tz": "Asia/Jerusalem" },
     { "origin": "BUD", "destination": "TLV", "date": "2026-07-18", "tz": "Europe/Budapest" },
     { "origin": "TLV", "destination": "BUD", "date": "2026-07-20", "tz": "Asia/Jerusalem" },
     { "origin": "TLV", "destination": "BUD", "date": "2026-07-21", "tz": "Asia/Jerusalem" },
